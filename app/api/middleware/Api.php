@@ -35,20 +35,31 @@ class Api
 {
     public function handle($request, \Closure $next)
     {
-        $token = Request::header('token');
+        $token = Request::header(config('app.token'));
         if ($token) {
             if (count(explode('.', $token)) <> 3) {
-                $this->result([], 0, 'token格式错误');
+                $this->result([], 1000, 'token格式错误');
             }
-            $jwtAuth = JwtAuth::getInstance();
-            $jwtAuth->setToken($token);
-            if ($jwtAuth->validate() && $jwtAuth->verify()) {
+
+            // 检验token是否过期，此处走的是session
+            // $jwtAuth = JwtAuth::getInstance();
+            // $jwtAuth->setToken($token);
+            // if ($jwtAuth->validate() && $jwtAuth->verify()) {
+            //     return $next($request);
+            // } else {
+            //     $this->result([], 1000, 'token已过期');
+            // }
+
+            // 检验token是否过期，此处走的是redis
+            if (cache()->store('redis')->has($token)) {
+                $userInfo = cache()->store('redis')->get($token);
+                cache()->store('redis')->set($token,$userInfo, config('app.redis_time'));
                 return $next($request);
             } else {
-                $this->result([], 0, 'token已过期');
+                $this->result([], 1000, 'token已过期');
             }
         } else {
-            $this->result([], 0, 'token不能为空');
+            $this->result([], 1000, 'token不能为空');
         }
 
         return $next($request);

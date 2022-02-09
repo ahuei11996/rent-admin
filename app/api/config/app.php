@@ -16,4 +16,5 @@
 return [
     // 默认分页显示数量
     'page_size'             => 10,
+    'token'                 => 'x-Access-Token',
 ];

@@ -33,6 +33,9 @@ use think\facade\Request;
 
 class User extends Base
 {
+
+    private $userInfo;
+
     /**
      * 控制器中间件 [登录、注册 不需要鉴权]
      * @var array
@@ -40,6 +43,16 @@ class User extends Base
     protected $middleware = [
         'app\api\middleware\Api' => ['except' => ['login', 'register']],
     ];
+
+    /**
+     * 构造函数
+     */
+    public function __construct() {
+        $token = Request::header(config('app.token'));
+        if($token) {
+            $this->userInfo = json_decode(cache()->store("redis")->get($token));
+        }
+    }
 
     /**
      * @api {post} /User/login 01、会员登录
@@ -53,9 +66,9 @@ class User extends Base
      * @apiParam (响应字段：) {string}     		token    Token
 
      * @apiSuccessExample {json} 成功示例
-     * {"code":1,"msg":"登录成功","time":1563525780,"data":{"token":"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJhcGkuc2l5dWNtcy5jb20iLCJhdWQiOiJzaXl1Y21zX2FwcCIsImlhdCI6MTU2MzUyNTc4MCwiZXhwIjoxNTYzNTI5MzgwLCJ1aWQiOjEzfQ.prQbqT00DEUbvsA5M14HpNoUqm31aj2JEaWD7ilqXjw"}}
+     * {"code":200,"msg":"登录成功","time":1563525780,"data":{"token":"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJhcGkuc2l5dWNtcy5jb20iLCJhdWQiOiJzaXl1Y21zX2FwcCIsImlhdCI6MTU2MzUyNTc4MCwiZXhwIjoxNTYzNTI5MzgwLCJ1aWQiOjEzfQ.prQbqT00DEUbvsA5M14HpNoUqm31aj2JEaWD7ilqXjw"}}
      * @apiErrorExample {json} 失败示例
-     * {"code":0,"msg":"帐号或密码错误","time":1563525638,"data":[]}
+     * {"code":500,"msg":"帐号或密码错误","time":1563525638,"data":[]}
      */
     public function login(string $username, string $password)
     {
@@ -64,18 +77,26 @@ class User extends Base
             ->where('password', md5($password))
             ->find();
         if (empty($user)) {
-            $this->result([], 0, '帐号或密码错误');
+            $this->result([], 500, '帐号或密码错误');
         } else {
             if ($user['status'] == 1) {
                 //获取jwt的句柄
                 $jwtAuth = JwtAuth::getInstance();
                 $token = $jwtAuth->setUid($user['id'])->encode()->getToken();
                 //更新信息
-                Users::where('id', $user['id'])
-                    ->update(['last_login_time' => time(), 'last_login_ip' => Request::ip()]);
-                $this->result(['token' => $token], 1, '登录成功');
+                // Users::where('id', $user['id'])
+                //     ->update(['last_login_time' => time(), 'last_login_ip' => Request::ip()]);
+
+                // 更新信息2022-02-08，使用模型更新
+                $user->last_login_time = time();
+                $user->last_login_ip = Request::ip();
+                $user->save();
+
+                // 设置redis缓存，有效时间为30天
+                cache()->store('redis')->set($token,json_encode($user), 2592000);
+                $this->result(['token' => $token], 200, '登录成功');
             } else {
-                $this->result([], 0, '用户已被禁用');
+                $this->result([], 500, '用户已被禁用');
             }
         }
     }
@@ -90,25 +111,25 @@ class User extends Base
      * @apiParam (请求参数：) {string}     		password 密码
 
      * @apiSuccessExample {json} 成功示例
-     * {"code":1,"msg":"注册成功","time":1563526721,"data":[]}
+     * {"code":200,"msg":"注册成功","time":1563526721,"data":[]}
      * @apiErrorExample {json} 失败示例
-     * {"code":0,"msg":"邮箱已被注册","time":1563526693,"data":[]}
+     * {"code":500,"msg":"邮箱已被注册","time":1563526693,"data":[]}
      */
     public function register(string $email, string $password){
         // 密码长度不能低于6位
         if (strlen($password) < 6) {
-            $this->result([], 0, '密码长度不能低于6位');
+            $this->result([], 500, '密码长度不能低于6位');
         }
 
         // 邮箱合法性判断
         if (!is_email($email)) {
-            $this->result([], 0, '邮箱格式错误');
+            $this->result([], 500, '邮箱格式错误');
         }
 
         // 防止重复
         $id = Db::name('users')->where('email|mobile', '=', $email)->find();
         if ($id) {
-            $this->result([], 0, '邮箱已被注册');
+            $this->result([], 500, '邮箱已被注册');
         }
 
         // 注册入库
@@ -122,9 +143,9 @@ class User extends Base
         $data['sex']             = Request::post('sex') ? Request::post('sex') : 0;
         $id = Db::name('users')->insertGetId($data);
         if ($id) {
-            $this->result([], 1, '注册成功');
+            $this->result([], 200, '注册成功');
         } else {
-            $this->result([], 0, '注册失败');
+            $this->result([], 500, '注册失败');
         }
     }
 
@@ -137,7 +158,7 @@ class User extends Base
      * @apiParam (请求参数：) {string}     		token Token
 
      * @apiSuccessExample {json} 响应数据样例
-     * {"code":1,"msg":"","time":1563517637,"data":{"id":13,"email":"test110@qq.com","password":"e10adc3949ba59abbe56e057f20f883e","sex":1,"last_login_time":1563517503,"last_login_ip":"127.0.0.1","qq":"123455","mobile":"","mobile_validated":0,"email_validated":0,"type_id":1,"status":1,"create_ip":"127.0.0.1","update_time":1563507130,"create_time":1563503991,"type_name":"注册会员"}}
+     * {"code":200,"msg":"","time":1563517637,"data":{"id":13,"email":"test110@qq.com","password":"e10adc3949ba59abbe56e057f20f883e","sex":1,"last_login_time":1563517503,"last_login_ip":"127.0.0.1","qq":"123455","mobile":"","mobile_validated":0,"email_validated":0,"type_id":1,"status":1,"create_ip":"127.0.0.1","update_time":1563507130,"create_time":1563503991,"type_name":"注册会员"}}
      */
     public function index()
     {
@@ -147,7 +168,7 @@ class User extends Base
             ->field('u.*,ut.name as type_name')
             ->where('u.id', $this->getUid())
             ->find();
-        return $this->result($user, 1, '');
+        return $this->result($user, 200, '');
     }
 
     /**
@@ -161,14 +182,14 @@ class User extends Base
      * @apiParam (请求参数：) {string}     		newPassword 新密码
 
      * @apiSuccessExample {json} 成功示例
-     * {"code":1,"msg":"密码修改成功","time":1563527107,"data":[]}
+     * {"code":200,"msg":"密码修改成功","time":1563527107,"data":[]}
      * @apiErrorExample {json} 失败示例
-     * {"code":0,"msg":"token已过期","time":1563527082,"data":[]}
+     * {"code":500,"msg":"token已过期","time":1563527082,"data":[]}
      */
     public function editPwd(string $oldPassword, string $newPassword){
         // 密码长度不能低于6位
         if (strlen($newPassword) < 6) {
-            $this->result([], 0, '密码长度不能低于6位');
+            $this->result([], 500, '密码长度不能低于6位');
         }
 
         // 查看原密码是否正确
@@ -176,14 +197,14 @@ class User extends Base
             ->where('password', md5($oldPassword))
             ->find();
         if (!$user) {
-            $this->result([], 0, '原密码输入有误');
+            $this->result([], 500, '原密码输入有误');
         }
 
         //更新信息
         $user = Users::find($this->getUid());
         $user->password = md5($newPassword);
         $user->save();
-        $this->result([], 1, '密码修改成功');
+        $this->result([], 200, '密码修改成功');
     }
 
     /**
@@ -198,9 +219,9 @@ class User extends Base
      * @apiParam (请求参数：) {string}     		mobile  手机号
 
      * @apiSuccessExample {json} 成功示例
-     * {"code":0,"msg":"修改成功","time":1563507660,"data":[]}
+     * {"code":200,"msg":"修改成功","time":1563507660,"data":[]}
      * @apiErrorExample {json} 失败示例
-     * {"code":0,"msg":"token已过期","time":1563527082,"data":[]}
+     * {"code":500,"msg":"token已过期","time":1563527082,"data":[]}
      */
     public function editInfo(){
         $data['sex']    = trim(Request::param("sex"));
@@ -227,7 +248,13 @@ class User extends Base
      * @return mixed
      */
     protected function getUid(){
-        $jwtAuth = JwtAuth::getInstance();
-        return $jwtAuth->getUid();
+        if($this->userInfo) {
+            return $this->userInfo->id;
+        } else {
+            return '';
+        }
+        
+        // $jwtAuth = JwtAuth::getInstance();
+        // return $jwtAuth->getUid();
     }
 }
