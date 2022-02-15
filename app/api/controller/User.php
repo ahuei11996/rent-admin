@@ -309,7 +309,7 @@ class User extends Base
      * 
      * @apiParam (请求参数：) {string}     		openid openid
      * @apiParam (请求参数：) {string}     		unionid unionid
-     * @apiParam (请求参数：) {string}     		type 类型 [wechat微信公众号/wechat微信小程序]
+     * @apiParam (请求参数：) {string}     		type 类型 [wechatMP微信公众号/wechatMiniprogram微信小程序]
      * @apiParam (请求参数：) {string}     		info '{"sex":"性别","nickname":"用户昵称","province":"省份","city":"城市","country":"国家","headimgurl":"用户头像","privilege":"特权信息"}'
 
      * @apiSuccessExample {json} 成功示例
@@ -332,12 +332,12 @@ class User extends Base
             $data = [];
             $data['email']           = "";
             $data['password']        = "";
-            $data['nickname']        = $_info->nickname;
+            $data['nickname']        = isset($_info->nickname) ? $_info->nickname : (isset($_info->nickName) ? $_info->nickName : '');
             $data['last_login_time'] = $data['create_time'] = time();
             $data['create_ip']       = $data['last_login_ip'] = Request::ip();
             $data['status']          = 1;
             $data['type_id']         = 1;
-            $data['sex']             = $_info->sex ? $_info->sex : 0;
+            $data['sex']             = isset($_info->sex) ? $_info->sex : (isset($_info->gender) ? $_info->gender : 0);
             $id = Db::name('users')->insertGetId($data);
             if ($id) {
                 $thirdData = [];
@@ -358,12 +358,26 @@ class User extends Base
     }
 
     /**
-     * @api  {post} /User/thirdLogin 08、微信小城登陆
+     * @api  {post} /User/thirdLogin 08、微信小程序登陆注册
+     * @apiGroup User
+     * @apiVersion 6.0.0
+     * @apiDescription  用户登陆注册，返回成功或失败提示
+     * 
+     * @apiParam (请求参数：) {string}     		code code
+     * @apiParam (请求参数：) {string}     		rawData rawData
+     * @apiParam (请求参数：) {string}     		signature signature
+     * @apiParam (请求参数：) {string}     		encryptedData encryptedData
+     * @apiParam (请求参数：) {string}     		iv iv
+     * 
+     * @apiSuccessExample {json} 成功示例
+     * {"code":200,"msg":"登录成功","time":1644935506,"data":{"token":"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJhcGkuc2l5dWNtcy5jb20iLCJhdWQiOiJzaXl1Y21zX2FwcCIsImlhdCI6MTY0NDY3OTkwNiwiZXhwIjoxNjQ0NjgzNTA2LCJ1aWQiOjE3fQ.EYEYOHTiQDOMTQoihv0sRexxzPEI4BvZZ8ri1I27iHE"}}
+     * @apiErrorExample {json} 失败示例
+     * {"code":500,"msg":"requestTokenFailed","time":1563527082,"data":[]}
      */
     public function wxLogin(string $code,string $rawData, string $signature, string $encryptedData, string $iv)
     {
         /**
-         * 3.小程序调用server获取token接口, 传入code, rawData, signature, encryptData.
+         * 1.小程序调用server获取token接口, 传入code, rawData, signature, encryptData.
          * 配置appid,secret信息
          */
 
@@ -373,7 +387,7 @@ class User extends Base
         $grant_type = "authorization_code";     
 
         /**
-         * 4.server调用微信提供的jsoncode2session接口获取openid, session_key, 调用失败应给予客户端反馈
+         * 2.server调用微信提供的jsoncode2session接口获取openid, session_key, 调用失败应给予客户端反馈
          * , 微信侧返回错误则可判断为恶意请求, 可以不返回. 微信文档链接
          * 这是一个 HTTP 接口，开发者服务器使用登录凭证 code 获取 session_key 和 openid。其中 session_key 是对用户数据进行加密签名的密钥。
          * 为了自身应用安全，session_key 不应该在网络上传输。
@@ -396,7 +410,7 @@ class User extends Base
         }
         $sessionKey = $reqData['session_key'];
         /**
-         * 5.server计算signature, 并与小程序传入的signature比较, 校验signature的合法性, 不匹配则返回signature不匹配的错误. 不匹配的场景可判断为恶意请求, 可以不返回.
+         * 3.server计算signature, 并与小程序传入的signature比较, 校验signature的合法性, 不匹配则返回signature不匹配的错误. 不匹配的场景可判断为恶意请求, 可以不返回.
          * 通过调用接口（如 wx.getUserInfo）获取敏感数据时，接口会同时返回 rawData、signature，其中 signature = sha1( rawData + session_key )
          *
          * 将 signature、rawData、以及用户登录态发送给开发者服务器，开发者在数据库中找到该用户对应的 session-key
@@ -407,12 +421,12 @@ class User extends Base
 
         /**
          *
-         * 6.使用第4步返回的session_key解密encryptData, 将解得的信息与rawData中信息进行比较, 需要完全匹配,
+         * 4.使用第4步返回的session_key解密encryptData, 将解得的信息与rawData中信息进行比较, 需要完全匹配,
          * 解得的信息中也包括openid, 也需要与第4步返回的openid匹配. 解密失败或不匹配应该返回客户相应错误.
          * （使用官方提供的方法即可）
          */
         $pc = WechatBizDataCrypt::getInstance();
-        $pc->init($appid,$sessionKey);
+        $pc->init($appid,$sessionKey);      //  注意！注意！注意！  这里输入的是$appid和$sessionkey
         $errCode = $pc->decryptData($encryptedData, $iv, $data);
 
         if ($errCode !== 0) {
@@ -421,7 +435,7 @@ class User extends Base
 
 
         /**
-         * 7.生成第三方3rd_session，用于第三方服务器和小程序之间做登录态校验。为了保证安全性，3rd_session应该满足：
+         * 5.生成第三方3rd_session，用于第三方服务器和小程序之间做登录态校验。为了保证安全性，3rd_session应该满足：
          * a.长度足够长。建议有2^128种组合，即长度为16B
          * b.避免使用srand（当前时间）然后rand()的方法，而是采用操作系统提供的真正随机数机制，比如Linux下面读取/dev/urandom设备
          * c.设置一定有效时间，对于过期的3rd_session视为不合法
@@ -434,8 +448,10 @@ class User extends Base
         // $session3rd = randomFromDev(16);
 
         // $data['session3rd'] = $session3rd;
-
-        $this->result($data,200,'');
+        // $caseData = array_change_key_case($data);
+        // var_dump($data);
+        $this->thirdLogin($reqData['openid'],"","wechatMiniprogram",json_encode($data));
+        // $this->result($data,200,'');
     }
 
     /**
