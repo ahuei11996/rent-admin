@@ -35,7 +35,7 @@ class Api
 {
     public function handle($request, \Closure $next)
     {
-        $token = Request::header(config('app.token'));
+        $token = getToken();
         if ($token) {
             if (count(explode('.', $token)) <> 3) {
                 $this->result([], 1000, 'token格式错误');

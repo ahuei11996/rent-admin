@@ -31,7 +31,6 @@ class Users extends Validate
 {
     protected $rule = [
         'email|邮箱' => [
-            'require' => 'require',
             'max' => '100',
         ],
         'password|密码' => [

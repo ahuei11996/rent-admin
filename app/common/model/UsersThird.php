@@ -1,12 +1,12 @@
 <?php
 /**
  * +----------------------------------------------------------------------
- * | 会员管理模型
+ * | 第三方登陆信息表模型
  * +----------------------------------------------------------------------
  *                      .::::.
  *                    .::::::::.            | AUTHOR: siyu
  *                    :::::::::::           | EMAIL: 407593529@qq.com
- *                 ..:::::::::::'           | DATETIME: 2022/02/14
+ *                 ..:::::::::::'           | DATETIME: 2022/02/12
  *             '::::::::::::'
  *                .::::::::::
  *           '::::::::::::::..
@@ -25,7 +25,7 @@
  */
 namespace app\common\model;
 
-class Users extends Base
+class UsersThird extends Base
 {
     // 定义时间戳字段名
     protected $createTime = 'create_time';
@@ -33,9 +33,9 @@ class Users extends Base
 
     
     
-    public function usersType()
+    public function cate()
     {
-        return $this->belongsTo('UsersType', 'type_id');
+        return $this->belongsTo('Cate', 'cate_id');
     }
     
 
